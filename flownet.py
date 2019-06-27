@@ -1,5 +1,5 @@
 import os
-os.environ['TF_CPP_MIN_LOG_LEVEL']='2'
+os.environ['TF_CPP_MIN_LOG_LEVEL']='0'
 from keras.engine.topology import Layer
 from keras.models import Model, Sequential
 from keras import activations
@@ -31,11 +31,6 @@ if HEADLESS:
     matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
-# Use the custom correlation layer or build one from tensorflow slice operations
-use_custom_correlation = True
-if use_custom_correlation:
-  import correlation_layer as cl
-
 QUICK_DEBUG = True
 BATCH_SIZE = 3
 num_epochs = 10
@@ -64,6 +59,8 @@ def get_padded_stride(b,displacement_x,displacement_y,height_8=384/8,width_8=512
 def get_correlation_layer(conv3_pool_l,conv3_pool_r,max_displacement=20,stride2=2,height_8=384/8,width_8=512/8):
     layer_list = []
     dotLayer = myDot()
+    height_8=48
+    width_8=64
     for i in range(-max_displacement, max_displacement+stride2,stride2):
         for j in range(-max_displacement, max_displacement+stride2,stride2):
             slice_b = get_padded_stride(conv3_pool_r,i,j,height_8,width_8)
@@ -73,7 +70,7 @@ def get_correlation_layer(conv3_pool_l,conv3_pool_r,max_displacement=20,stride2=
     
 
 def getEncoderModel(height = 384, width = 512,batch_size=32):
-    print "Generating model with height={}, width={},batch_size={}".format(height,width,batch_size)
+    print ("Generating model with height={}, width={},batch_size={}".format(height,width,batch_size))
 
     ## convolution model
     conv_activation = lambda x: activations.relu(x,alpha=0.1) # Use the activation from the FlowNetC Caffe implementation
@@ -96,13 +93,10 @@ def getEncoderModel(height = 384, width = 512,batch_size=32):
     conv3_l = conv3(conv2_l)
     conv3_r = conv3(conv2_r)
 
-
     # merge
-    print "Generating Correlation layer..."
-    if use_custom_correlation:
-      corr_layer = Lambda( lambda x: cl.corr(a=x[0],b=x[1],stride=2,max_displacement=20), name= "correlation_layer")([conv3_l,conv3_r])
-    else:
-      corr_layer = get_correlation_layer(conv3_l, conv3_r,max_displacement=20,stride2=2,height_8=height/8,width_8=width/8)
+    print ("Generating Correlation layer...")
+    corr_layer = get_correlation_layer(conv3_l, conv3_r,max_displacement=20,stride2=2,height_8=height/8,width_8=width/8)
+    
     # merged convolution
     conv3_l_redir = Convolution2D(32,(1,1),name="conv_redir",activation=conv_activation)(conv3_l)
     conv3_l_with_corr = concatenate([conv3_l_redir,corr_layer],name="concatenated_correlation")
@@ -122,12 +116,12 @@ def getEncoderModel(height = 384, width = 512,batch_size=32):
     conv6 = Convolution2D(1024, (3, 3), strides= 2,padding = 'same', name='conv6',activation=conv_activation)(conv5_1)
     height_64 = height_32/2; width_64 = width_32/2
 
-    print "Compiling..."
+    print ("Compiling...")
 
     optimizer = SGD(nesterov=True, lr=0.00001, momentum=0.1,decay=0.001);
     model = Model(inputs = [input_l, input_r], outputs = conv6)
     model.compile(optimizer=optimizer,loss='mean_squared_error')
-    print "Done"
+    print ("Done")
 
     return model
 
@@ -137,4 +131,3 @@ if __name__ == '__main__':
     width = 512
     encoderModel = getEncoderModel(height=height, width=width,batch_size = batch_size);
     encoderModel.summary()
-
